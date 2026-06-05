@@ -6,6 +6,10 @@
 
 #define FITS_CARD_SIZE 80
 #define FITS_BLOCK_SIZE 2880
+#define FITS_HISTOGRAM_BINS 512
+#define FITS_LOW_PERCENTILE_NUM 10
+#define FITS_HIGH_PERCENTILE_NUM 995
+#define FITS_PERCENTILE_DEN 1000
 
 static int starts_with(const char *card, const char *key)
 {
@@ -47,22 +51,6 @@ static float read_float_be(const unsigned char *bytes)
 static int is_finite_bits(unsigned long bits)
 {
     return (bits & 0x7F800000UL) != 0x7F800000UL;
-}
-
-static int float_less(const void *left, const void *right)
-{
-    float a;
-    float b;
-
-    a = *(const float *)left;
-    b = *(const float *)right;
-    if (a < b) {
-        return -1;
-    }
-    if (a > b) {
-        return 1;
-    }
-    return 0;
 }
 
 int fits_load(const char *path, struct FitsImage *image, char *error_text)
@@ -191,29 +179,88 @@ void fits_free(struct FitsImage *image)
 int fits_percentile_bounds(const struct FitsImage *image, float *low, float *high)
 {
     long pixel_count;
-    float *sorted;
-    long low_index;
-    long high_index;
+    long i;
+    float min_value;
+    float max_value;
+    float range;
+    unsigned int histogram[FITS_HISTOGRAM_BINS];
+    unsigned long low_target;
+    unsigned long high_target;
+    unsigned long seen;
+    int bin;
 
     pixel_count = (long)image->width * (long)image->height;
-    sorted = (float *)malloc((size_t)pixel_count * sizeof(float));
-    if (sorted == 0) {
+
+    if (pixel_count <= 0) {
         return -1;
     }
 
-    memcpy(sorted, image->pixels, (size_t)pixel_count * sizeof(float));
-    qsort(sorted, (size_t)pixel_count, sizeof(float), float_less);
+    min_value = image->pixels[0];
+    max_value = image->pixels[0];
+    for (i = 1; i < pixel_count; i++) {
+        float value;
 
-    low_index = pixel_count / 100;
-    high_index = pixel_count - low_index - 1;
-    if (high_index <= low_index) {
-        low_index = 0;
-        high_index = pixel_count - 1;
+        value = image->pixels[i];
+        if (value < min_value) {
+            min_value = value;
+        }
+        if (value > max_value) {
+            max_value = value;
+        }
     }
 
-    *low = sorted[low_index];
-    *high = sorted[high_index];
-    free(sorted);
+    if (max_value <= min_value) {
+        *low = min_value;
+        *high = min_value + 1.0F;
+        return 0;
+    }
+
+    memset(histogram, 0, sizeof(histogram));
+    range = max_value - min_value;
+
+    for (i = 0; i < pixel_count; i++) {
+        float scaled;
+
+        scaled = (image->pixels[i] - min_value) *
+                 (float)(FITS_HISTOGRAM_BINS - 1) / range;
+        bin = (int)scaled;
+        if (bin < 0) {
+            bin = 0;
+        } else if (bin >= FITS_HISTOGRAM_BINS) {
+            bin = FITS_HISTOGRAM_BINS - 1;
+        }
+        histogram[bin]++;
+    }
+
+    low_target = ((unsigned long)pixel_count * FITS_LOW_PERCENTILE_NUM) /
+                 FITS_PERCENTILE_DEN;
+    high_target = ((unsigned long)pixel_count * FITS_HIGH_PERCENTILE_NUM) /
+                  FITS_PERCENTILE_DEN;
+    if (high_target >= (unsigned long)pixel_count) {
+        high_target = (unsigned long)pixel_count - 1;
+    }
+
+    seen = 0;
+    *low = min_value;
+    for (bin = 0; bin < FITS_HISTOGRAM_BINS; bin++) {
+        seen += histogram[bin];
+        if (seen > low_target) {
+            *low = min_value + range * (float)bin /
+                   (float)(FITS_HISTOGRAM_BINS - 1);
+            break;
+        }
+    }
+
+    seen = 0;
+    *high = max_value;
+    for (bin = 0; bin < FITS_HISTOGRAM_BINS; bin++) {
+        seen += histogram[bin];
+        if (seen > high_target) {
+            *high = min_value + range * (float)bin /
+                    (float)(FITS_HISTOGRAM_BINS - 1);
+            break;
+        }
+    }
 
     if (*high <= *low) {
         *high = *low + 1.0F;
