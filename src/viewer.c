@@ -259,6 +259,7 @@ static int copy_render_to_bitmap(struct BitMap *bitmap, int depth, char *error_t
 {
     int plane;
     int y;
+    ULONG plane_size;
 
     if (bitmap == 0 || bitmap->Depth < depth) {
         sprintf(error_text, "viewer bitmap has no direct bitplanes");
@@ -272,15 +273,13 @@ static int copy_render_to_bitmap(struct BitMap *bitmap, int depth, char *error_t
         }
     }
 
+    plane_size = (ULONG)bitmap->BytesPerRow * (ULONG)bitmap->Rows;
     for (plane = 0; plane < depth; plane++) {
-        if (bitmap->BytesPerRow == VIEW_BYTES_PER_ROW) {
-            memcpy(bitmap->Planes[plane], planar_buffer[plane], (size_t)VIEW_PLANE_SIZE);
-        } else {
-            for (y = 0; y < VIEW_HEIGHT; y++) {
-                memcpy(bitmap->Planes[plane] + (ULONG)y * bitmap->BytesPerRow,
-                       planar_buffer[plane] + (ULONG)y * VIEW_BYTES_PER_ROW,
-                       VIEW_BYTES_PER_ROW);
-            }
+        memset(bitmap->Planes[plane], 0, (size_t)plane_size);
+        for (y = 0; y < VIEW_HEIGHT; y++) {
+            memcpy(bitmap->Planes[plane] + (ULONG)y * bitmap->BytesPerRow,
+                   planar_buffer[plane] + (ULONG)y * VIEW_BYTES_PER_ROW,
+                   VIEW_BYTES_PER_ROW);
         }
     }
     return 0;
