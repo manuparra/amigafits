@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <exec/types.h>
 #include <graphics/gfx.h>
@@ -131,8 +132,8 @@ static void set_colormap_palette(struct ViewPort *vp)
     }
 }
 
-static void draw_image(struct RastPort *rp, const struct FitsImage *image,
-                       float low, float high)
+static void draw_image_slow(struct RastPort *rp, const struct FitsImage *image,
+                            float low, float high)
 {
     int x;
     int y;
@@ -163,7 +164,6 @@ static void draw_image(struct RastPort *rp, const struct FitsImage *image,
 
         for (x = 0; x < VIEW_WIDTH; x++) {
             int source_x;
-            UBYTE pen;
 
             source_x = (int)(((long)x + crop_x) * image->width / scaled_width);
             if (source_x < 0) {
@@ -172,10 +172,113 @@ static void draw_image(struct RastPort *rp, const struct FitsImage *image,
                 source_x = image->width - 1;
             }
 
+            SetAPen(rp, (LONG)pixel_to_pen(
+                image->pixels[(long)source_y * image->width + source_x],
+                low, high));
+            WritePixel(rp, (LONG)x, (LONG)y);
+        }
+    }
+}
+
+static int bitmap_has_planes(struct BitMap *bitmap)
+{
+    int plane;
+
+    if (bitmap == 0 || bitmap->Depth < VIEW_DEPTH) {
+        return 0;
+    }
+
+    for (plane = 0; plane < VIEW_DEPTH; plane++) {
+        if (bitmap->Planes[plane] == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void draw_image(struct RastPort *rp, struct BitMap *bitmap,
+                       const struct FitsImage *image, float low, float high)
+{
+    int x;
+    int y;
+    long scaled_width;
+    long scaled_height;
+    long crop_x;
+    long crop_y;
+    ULONG plane_size;
+    PLANEPTR planes[VIEW_DEPTH];
+    int plane;
+    int source_xs[VIEW_WIDTH];
+    int source_ys[VIEW_HEIGHT];
+
+    if (!bitmap_has_planes(bitmap)) {
+        draw_image_slow(rp, image, low, high);
+        return;
+    }
+
+    plane_size = (ULONG)bitmap->BytesPerRow * (ULONG)bitmap->Rows;
+    for (plane = 0; plane < VIEW_DEPTH; plane++) {
+        planes[plane] = bitmap->Planes[plane];
+        memset(planes[plane], 0, (size_t)plane_size);
+    }
+
+    scaled_width = VIEW_WIDTH;
+    scaled_height = (long)image->height * VIEW_WIDTH / image->width;
+    if (scaled_height < VIEW_HEIGHT) {
+        scaled_height = VIEW_HEIGHT;
+        scaled_width = (long)image->width * VIEW_HEIGHT / image->height;
+    }
+
+    crop_x = (scaled_width - VIEW_WIDTH) / 2;
+    crop_y = (scaled_height - VIEW_HEIGHT) / 2;
+
+    for (x = 0; x < VIEW_WIDTH; x++) {
+        source_xs[x] = (int)(((long)x + crop_x) * image->width / scaled_width);
+        if (source_xs[x] < 0) {
+            source_xs[x] = 0;
+        } else if (source_xs[x] >= image->width) {
+            source_xs[x] = image->width - 1;
+        }
+    }
+
+    for (y = 0; y < VIEW_HEIGHT; y++) {
+        source_ys[y] = (int)(((long)y + crop_y) * image->height / scaled_height);
+        if (source_ys[y] < 0) {
+            source_ys[y] = 0;
+        } else if (source_ys[y] >= image->height) {
+            source_ys[y] = image->height - 1;
+        }
+    }
+
+    for (y = 0; y < VIEW_HEIGHT; y++) {
+        int source_y;
+
+        source_y = source_ys[y];
+
+        for (x = 0; x < VIEW_WIDTH; x++) {
+            int source_x;
+            UBYTE pen;
+            UBYTE mask;
+            ULONG offset;
+
+            source_x = source_xs[x];
             pen = pixel_to_pen(image->pixels[(long)source_y * image->width + source_x],
                                low, high);
-            SetAPen(rp, (LONG)pen);
-            WritePixel(rp, (LONG)x, (LONG)y);
+            mask = (UBYTE)(0x80 >> (x & 7));
+            offset = (ULONG)y * bitmap->BytesPerRow + (ULONG)(x >> 3);
+
+            if (pen & 1) {
+                planes[0][offset] |= mask;
+            }
+            if (pen & 2) {
+                planes[1][offset] |= mask;
+            }
+            if (pen & 4) {
+                planes[2][offset] |= mask;
+            }
+            if (pen & 8) {
+                planes[3][offset] |= mask;
+            }
         }
     }
 }
@@ -297,7 +400,7 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     SetAPen(window->RPort, 0);
     RectFill(window->RPort, 0, 0, VIEW_WIDTH - 1, VIEW_HEIGHT - 1);
     debug_step("drawing image");
-    draw_image(window->RPort, image, low, high);
+    draw_image(window->RPort, &screen->BitMap, image, low, high);
     debug_step("image drawn, waiting for input");
     wait_for_exit(window);
     debug_step("input received, closing");

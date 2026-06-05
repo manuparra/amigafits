@@ -6,8 +6,8 @@
 
 #define FITS_CARD_SIZE 80
 #define FITS_BLOCK_SIZE 2880
-#define FITS_FIXED_LOW 0.0F
-#define FITS_FIXED_HIGH 4096.0F
+#define FITS_FIXED_LOW 190.0F
+#define FITS_FIXED_HIGH 650.0F
 
 static int starts_with(const char *card, const char *key)
 {

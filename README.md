@@ -15,7 +15,7 @@ The first target is the included `img.fits` astronomy image. It is a
   preserving aspect ratio, cropping centered overflow when needed.
 - Opens a 320x200 custom screen with 4 bitplanes and a 16-color false-color
   colormap.
-- Maps FITS pixel values to the palette with a temporary fixed `0..4096` data
+- Maps FITS pixel values to the palette with a temporary fixed `190..650` data
   range, saturating values outside that range.
 - Keeps the image visible until a key press, mouse button, or close event.
 
@@ -106,4 +106,4 @@ With the bundled `img.fits`:
 
 - Only primary 2D FITS images with `BITPIX=-32` are supported.
 - No zooming, panning, color palette selection, or histogram UI yet.
-- Contrast currently assumes a fixed `0..4096` input range.
+- Contrast currently assumes a fixed `190..650` input range.
