@@ -26,6 +26,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    printf("amigafits: loaded %dx%d from %s\n", image.width, image.height, path);
+    printf("amigafits: opening graphics screen; press any key or mouse button to exit\n");
+
     result = viewer_show(&image, path, error_text);
     fits_free(&image);
 

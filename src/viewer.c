@@ -3,7 +3,9 @@
 
 #include <exec/types.h>
 #include <graphics/gfx.h>
+#include <graphics/gfxbase.h>
 #include <intuition/intuition.h>
+#include <intuition/intuitionbase.h>
 #include <libraries/dos.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
@@ -15,6 +17,54 @@
 #define VIEW_WIDTH 320
 #define VIEW_HEIGHT 200
 #define VIEW_DEPTH 4
+
+static int opened_intuition;
+static int opened_graphics;
+
+static int open_runtime_libraries(char *error_text)
+{
+    opened_intuition = 0;
+    opened_graphics = 0;
+
+    if (IntuitionBase == 0) {
+        IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 0L);
+        opened_intuition = IntuitionBase != 0;
+    }
+    if (IntuitionBase == 0) {
+        sprintf(error_text, "cannot open intuition.library");
+        return -1;
+    }
+
+    if (GfxBase == 0) {
+        GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 0L);
+        opened_graphics = GfxBase != 0;
+    }
+    if (GfxBase == 0) {
+        sprintf(error_text, "cannot open graphics.library");
+        if (opened_intuition) {
+            CloseLibrary((struct Library *)IntuitionBase);
+            IntuitionBase = 0;
+            opened_intuition = 0;
+        }
+        return -1;
+    }
+
+    return 0;
+}
+
+static void close_runtime_libraries(void)
+{
+    if (opened_graphics && GfxBase != 0) {
+        CloseLibrary((struct Library *)GfxBase);
+        GfxBase = 0;
+    }
+    if (opened_intuition && IntuitionBase != 0) {
+        CloseLibrary((struct Library *)IntuitionBase);
+        IntuitionBase = 0;
+    }
+    opened_graphics = 0;
+    opened_intuition = 0;
+}
 
 static UBYTE pixel_to_pen(float value, float low, float high)
 {
@@ -110,8 +160,7 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
         return -1;
     }
 
-    if (IntuitionBase == 0) {
-        sprintf(error_text, "intuition.library is not open");
+    if (open_runtime_libraries(error_text) != 0) {
         return -1;
     }
 
@@ -132,10 +181,12 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     screen = OpenScreen(&new_screen);
     if (screen == 0) {
         sprintf(error_text, "cannot open 320x200x4 custom screen");
+        close_runtime_libraries();
         return -1;
     }
 
     set_gray_palette(&screen->ViewPort);
+    ScreenToFront(screen);
 
     new_window.LeftEdge = 0;
     new_window.TopEdge = 0;
@@ -160,9 +211,12 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     if (window == 0) {
         CloseScreen(screen);
         sprintf(error_text, "cannot open viewer window");
+        close_runtime_libraries();
         return -1;
     }
 
+    WindowToFront(window);
+    ActivateWindow(window);
     SetAPen(window->RPort, 0);
     RectFill(window->RPort, 0, 0, VIEW_WIDTH - 1, VIEW_HEIGHT - 1);
     draw_image(window->RPort, image, low, high);
@@ -170,5 +224,6 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
 
     CloseWindow(window);
     CloseScreen(screen);
+    close_runtime_libraries();
     return 0;
 }
