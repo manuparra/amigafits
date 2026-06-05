@@ -312,6 +312,15 @@ static void wait_for_exit(struct Window *window)
     }
 }
 
+static void drain_window_messages(struct Window *window)
+{
+    struct IntuiMessage *message;
+
+    while ((message = (struct IntuiMessage *)GetMsg(window->UserPort)) != 0) {
+        ReplyMsg((struct Message *)message);
+    }
+}
+
 int viewer_show(const struct FitsImage *image, const char *title, char *error_text)
 {
     struct Screen *screen;
@@ -356,15 +365,6 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
 
     debug_step("setting colormap palette");
     set_colormap_palette(&screen->ViewPort, image->depth);
-    debug_step("copying image to screen bitmap");
-    if (copy_render_to_bitmap(&screen->BitMap, image->depth, error_text) != 0) {
-        CloseScreen(screen);
-        close_runtime_libraries();
-        return -1;
-    }
-    debug_step("calling ScreenToFront");
-    ScreenToFront(screen);
-    debug_step("ScreenToFront returned");
 
     debug_step("preparing NewWindow");
     new_window.LeftEdge = 0;
@@ -399,6 +399,18 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     debug_step("bringing window to front");
     WindowToFront(window);
     ActivateWindow(window);
+    drain_window_messages(window);
+    debug_step("copying image to screen bitmap");
+    if (copy_render_to_bitmap(&screen->BitMap, image->depth, error_text) != 0) {
+        CloseWindow(window);
+        CloseScreen(screen);
+        close_runtime_libraries();
+        return -1;
+    }
+    debug_step("calling ScreenToFront");
+    ScreenToFront(screen);
+    debug_step("ScreenToFront returned");
+    drain_window_messages(window);
     debug_step("image drawn, waiting for input");
     wait_for_exit(window);
     debug_step("input received, closing");
