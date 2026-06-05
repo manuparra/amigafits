@@ -13,8 +13,9 @@ draws it 1:1 without downscaling or interpolation.
 - Supports primary FITS images with `BITPIX=-32`, `NAXIS=2`, `NAXIS1`, and
   `NAXIS2`.
 - Rejects images larger than the 320x200 low-resolution display area.
-- Opens a 320x200 custom screen with 4 bitplanes and a 16-color gray palette.
-- Maps FITS pixel values to the palette using robust 1%-99% percentile
+- Opens a 320x200 custom screen with 4 bitplanes and a 16-color false-color
+  colormap.
+- Maps FITS pixel values to the palette using robust 1%-99.5% percentile
   contrast, saturating values outside that range.
 - Keeps the image visible until a key press, mouse button, or close event.
 

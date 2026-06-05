@@ -101,12 +101,33 @@ static UBYTE pixel_to_pen(float value, float low, float high)
     return (UBYTE)pen;
 }
 
-static void set_gray_palette(struct ViewPort *vp)
+static void set_colormap_palette(struct ViewPort *vp)
 {
+    static const UBYTE colormap[16][3] = {
+        {0, 0, 0},
+        {0, 0, 3},
+        {0, 0, 6},
+        {0, 1, 9},
+        {0, 3, 12},
+        {0, 6, 15},
+        {0, 10, 15},
+        {0, 14, 13},
+        {0, 15, 7},
+        {5, 15, 0},
+        {10, 15, 0},
+        {15, 15, 0},
+        {15, 11, 0},
+        {15, 6, 0},
+        {15, 10, 10},
+        {15, 15, 15}
+    };
     int i;
 
     for (i = 0; i < 16; i++) {
-        SetRGB4(vp, (LONG)i, (LONG)i, (LONG)i, (LONG)i);
+        SetRGB4(vp, (LONG)i,
+                (LONG)colormap[i][0],
+                (LONG)colormap[i][1],
+                (LONG)colormap[i][2]);
     }
 }
 
@@ -206,8 +227,8 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
         return -1;
     }
 
-    debug_step("setting gray palette");
-    set_gray_palette(&screen->ViewPort);
+    debug_step("setting colormap palette");
+    set_colormap_palette(&screen->ViewPort);
     debug_step("calling ScreenToFront");
     ScreenToFront(screen);
     debug_step("ScreenToFront returned");
