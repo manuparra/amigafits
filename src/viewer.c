@@ -18,9 +18,11 @@
 #define VIEW_WIDTH 320
 #define VIEW_HEIGHT 200
 #define VIEW_DEPTH 4
+#define VIEW_PIXELS ((long)VIEW_WIDTH * (long)VIEW_HEIGHT)
 
 static int opened_intuition;
 static int opened_graphics;
+static UBYTE chunky_buffer[VIEW_PIXELS];
 
 static void debug_step(const char *text)
 {
@@ -153,6 +155,7 @@ static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
 {
     int x;
     int y;
+    int byte_x;
     long scaled_width;
     long scaled_height;
     long crop_x;
@@ -204,33 +207,67 @@ static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
 
     for (y = 0; y < VIEW_HEIGHT; y++) {
         int source_y;
+        UBYTE *chunky_row;
 
         source_y = source_ys[y];
+        chunky_row = chunky_buffer + (long)y * VIEW_WIDTH;
 
         for (x = 0; x < VIEW_WIDTH; x++) {
             int source_x;
-            UBYTE pen;
-            UBYTE mask;
-            ULONG offset;
 
             source_x = source_xs[x];
-            pen = pixel_to_pen(image->pixels[(long)source_y * image->width + source_x],
-                               low, high);
-            mask = (UBYTE)(0x80 >> (x & 7));
-            offset = (ULONG)y * bitmap->BytesPerRow + (ULONG)(x >> 3);
+            chunky_row[x] = pixel_to_pen(
+                image->pixels[(long)source_y * image->width + source_x],
+                low, high);
+        }
+    }
 
-            if (pen & 1) {
-                planes[0][offset] |= mask;
+    for (y = 0; y < VIEW_HEIGHT; y++) {
+        UBYTE *chunky_row;
+        ULONG row_offset;
+
+        chunky_row = chunky_buffer + (long)y * VIEW_WIDTH;
+        row_offset = (ULONG)y * bitmap->BytesPerRow;
+
+        for (byte_x = 0; byte_x < VIEW_WIDTH / 8; byte_x++) {
+            UBYTE plane0;
+            UBYTE plane1;
+            UBYTE plane2;
+            UBYTE plane3;
+            int base;
+            int bit;
+
+            plane0 = 0;
+            plane1 = 0;
+            plane2 = 0;
+            plane3 = 0;
+            base = byte_x * 8;
+
+            for (bit = 0; bit < 8; bit++) {
+                UBYTE pen;
+                UBYTE mask;
+
+                pen = chunky_row[base + bit];
+                mask = (UBYTE)(0x80 >> bit);
+
+                if (pen & 1) {
+                    plane0 |= mask;
+                }
+                if (pen & 2) {
+                    plane1 |= mask;
+                }
+                if (pen & 4) {
+                    plane2 |= mask;
+                }
+                if (pen & 8) {
+                    plane3 |= mask;
+                }
             }
-            if (pen & 2) {
-                planes[1][offset] |= mask;
-            }
-            if (pen & 4) {
-                planes[2][offset] |= mask;
-            }
-            if (pen & 8) {
-                planes[3][offset] |= mask;
-            }
+
+            planes[0][row_offset + byte_x] = plane0;
+            planes[1][row_offset + byte_x] = plane1;
+            planes[2][row_offset + byte_x] = plane2;
+            planes[3][row_offset + byte_x] = plane3;
         }
     }
 
