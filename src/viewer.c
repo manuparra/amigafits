@@ -132,54 +132,6 @@ static void set_colormap_palette(struct ViewPort *vp)
     }
 }
 
-static void draw_image_slow(struct RastPort *rp, const struct FitsImage *image,
-                            float low, float high)
-{
-    int x;
-    int y;
-    long scaled_width;
-    long scaled_height;
-    long crop_x;
-    long crop_y;
-
-    scaled_width = VIEW_WIDTH;
-    scaled_height = (long)image->height * VIEW_WIDTH / image->width;
-    if (scaled_height < VIEW_HEIGHT) {
-        scaled_height = VIEW_HEIGHT;
-        scaled_width = (long)image->width * VIEW_HEIGHT / image->height;
-    }
-
-    crop_x = (scaled_width - VIEW_WIDTH) / 2;
-    crop_y = (scaled_height - VIEW_HEIGHT) / 2;
-
-    for (y = 0; y < VIEW_HEIGHT; y++) {
-        int source_y;
-
-        source_y = (int)(((long)y + crop_y) * image->height / scaled_height);
-        if (source_y < 0) {
-            source_y = 0;
-        } else if (source_y >= image->height) {
-            source_y = image->height - 1;
-        }
-
-        for (x = 0; x < VIEW_WIDTH; x++) {
-            int source_x;
-
-            source_x = (int)(((long)x + crop_x) * image->width / scaled_width);
-            if (source_x < 0) {
-                source_x = 0;
-            } else if (source_x >= image->width) {
-                source_x = image->width - 1;
-            }
-
-            SetAPen(rp, (LONG)pixel_to_pen(
-                image->pixels[(long)source_y * image->width + source_x],
-                low, high));
-            WritePixel(rp, (LONG)x, (LONG)y);
-        }
-    }
-}
-
 static int bitmap_has_planes(struct BitMap *bitmap)
 {
     int plane;
@@ -196,8 +148,8 @@ static int bitmap_has_planes(struct BitMap *bitmap)
     return 1;
 }
 
-static void draw_image(struct RastPort *rp, struct BitMap *bitmap,
-                       const struct FitsImage *image, float low, float high)
+static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
+                      float low, float high, char *error_text)
 {
     int x;
     int y;
@@ -212,8 +164,8 @@ static void draw_image(struct RastPort *rp, struct BitMap *bitmap,
     int source_ys[VIEW_HEIGHT];
 
     if (!bitmap_has_planes(bitmap)) {
-        draw_image_slow(rp, image, low, high);
-        return;
+        sprintf(error_text, "viewer bitmap has no direct bitplanes");
+        return -1;
     }
 
     plane_size = (ULONG)bitmap->BytesPerRow * (ULONG)bitmap->Rows;
@@ -281,6 +233,8 @@ static void draw_image(struct RastPort *rp, struct BitMap *bitmap,
             }
         }
     }
+
+    return 0;
 }
 
 static void wait_for_exit(struct Window *window)
@@ -396,11 +350,13 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     debug_step("bringing window to front");
     WindowToFront(window);
     ActivateWindow(window);
-    debug_step("clearing screen");
-    SetAPen(window->RPort, 0);
-    RectFill(window->RPort, 0, 0, VIEW_WIDTH - 1, VIEW_HEIGHT - 1);
     debug_step("drawing image");
-    draw_image(window->RPort, &screen->BitMap, image, low, high);
+    if (draw_image(&screen->BitMap, image, low, high, error_text) != 0) {
+        CloseWindow(window);
+        CloseScreen(screen);
+        close_runtime_libraries();
+        return -1;
+    }
     debug_step("image drawn, waiting for input");
     wait_for_exit(window);
     debug_step("input received, closing");
