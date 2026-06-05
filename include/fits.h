@@ -7,11 +7,10 @@
 struct FitsImage {
     int width;
     int height;
-    float *pixels;
+    unsigned char *pens;
 };
 
 int fits_load(const char *path, struct FitsImage *image, char *error_text);
 void fits_free(struct FitsImage *image);
-int fits_percentile_bounds(const struct FitsImage *image, float *low, float *high);
 
 #endif

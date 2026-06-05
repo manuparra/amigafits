@@ -81,29 +81,6 @@ static void close_runtime_libraries(void)
     opened_intuition = 0;
 }
 
-static UBYTE pixel_to_pen(float value, float low, float high)
-{
-    float scaled;
-    int pen;
-
-    if (value <= low) {
-        return 0;
-    }
-    if (value >= high) {
-        return 15;
-    }
-
-    scaled = (value - low) * 15.0F / (high - low);
-    pen = (int)(scaled + 0.5F);
-    if (pen < 0) {
-        pen = 0;
-    }
-    if (pen > 15) {
-        pen = 15;
-    }
-    return (UBYTE)pen;
-}
-
 static void set_colormap_palette(struct ViewPort *vp)
 {
     static const UBYTE colormap[16][3] = {
@@ -151,7 +128,7 @@ static int bitmap_has_planes(struct BitMap *bitmap)
 }
 
 static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
-                      float low, float high, char *error_text)
+                      char *error_text)
 {
     int x;
     int y;
@@ -216,9 +193,7 @@ static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
             int source_x;
 
             source_x = source_xs[x];
-            chunky_row[x] = pixel_to_pen(
-                image->pixels[(long)source_y * image->width + source_x],
-                low, high);
+            chunky_row[x] = image->pens[(long)source_y * image->width + source_x];
         }
     }
 
@@ -306,17 +281,8 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     struct Window *window;
     struct NewScreen new_screen;
     struct NewWindow new_window;
-    float low;
-    float high;
 
     debug_step("viewer_show entered");
-    debug_step("calculating percentile contrast");
-    if (fits_percentile_bounds(image, &low, &high) != 0) {
-        sprintf(error_text, "not enough memory for contrast scale");
-        return -1;
-    }
-    printf("amigafits: debug: contrast low=%ld high=%ld\n", (long)low, (long)high);
-    fflush(stdout);
 
     debug_step("opening runtime libraries");
     if (open_runtime_libraries(error_text) != 0) {
@@ -388,7 +354,7 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     WindowToFront(window);
     ActivateWindow(window);
     debug_step("drawing image");
-    if (draw_image(&screen->BitMap, image, low, high, error_text) != 0) {
+    if (draw_image(&screen->BitMap, image, error_text) != 0) {
         CloseWindow(window);
         CloseScreen(screen);
         close_runtime_libraries();

@@ -9,6 +9,29 @@
 #define FITS_FIXED_LOW 190.0F
 #define FITS_FIXED_HIGH 650.0F
 
+static unsigned char value_to_pen(float value)
+{
+    float scaled;
+    int pen;
+
+    if (value <= FITS_FIXED_LOW) {
+        return 0;
+    }
+    if (value >= FITS_FIXED_HIGH) {
+        return 15;
+    }
+
+    scaled = (value - FITS_FIXED_LOW) * 15.0F /
+             (FITS_FIXED_HIGH - FITS_FIXED_LOW);
+    pen = (int)(scaled + 0.5F);
+    if (pen < 0) {
+        pen = 0;
+    } else if (pen > 15) {
+        pen = 15;
+    }
+    return (unsigned char)pen;
+}
+
 static int starts_with(const char *card, const char *key)
 {
     return strncmp(card, key, strlen(key)) == 0;
@@ -66,7 +89,7 @@ int fits_load(const char *path, struct FitsImage *image, char *error_text)
     long pixel_count;
     long i;
     unsigned char bytes[4];
-    float *pixels;
+    unsigned char *pens;
 
     file = fopen(path, "rb");
     if (file == 0) {
@@ -130,8 +153,8 @@ int fits_load(const char *path, struct FitsImage *image, char *error_text)
     }
 
     pixel_count = (long)width * (long)height;
-    pixels = (float *)malloc((size_t)pixel_count * sizeof(float));
-    if (pixels == 0) {
+    pens = (unsigned char *)malloc((size_t)pixel_count);
+    if (pens == 0) {
         fclose(file);
         sprintf(error_text, "not enough memory for image");
         return -1;
@@ -141,46 +164,35 @@ int fits_load(const char *path, struct FitsImage *image, char *error_text)
         float value;
 
         if (fread(bytes, 1, 4, file) != 4) {
-            free(pixels);
+            free(pens);
             fclose(file);
             sprintf(error_text, "FITS data is truncated");
             return -1;
         }
 
         if (!is_finite_bits(read_u32_be(bytes))) {
-            free(pixels);
+            free(pens);
             fclose(file);
             sprintf(error_text, "FITS data contains non-finite pixels");
             return -1;
         }
         value = read_float_be(bytes);
-        pixels[i] = value;
+        pens[i] = value_to_pen(value);
     }
 
     fclose(file);
     image->width = width;
     image->height = height;
-    image->pixels = pixels;
+    image->pens = pens;
     return 0;
 }
 
 void fits_free(struct FitsImage *image)
 {
-    if (image->pixels != 0) {
-        free(image->pixels);
+    if (image->pens != 0) {
+        free(image->pens);
     }
-    image->pixels = 0;
+    image->pens = 0;
     image->width = 0;
     image->height = 0;
-}
-
-int fits_percentile_bounds(const struct FitsImage *image, float *low, float *high)
-{
-    if (image->width <= 0 || image->height <= 0) {
-        return -1;
-    }
-
-    *low = FITS_FIXED_LOW;
-    *high = FITS_FIXED_HIGH;
-    return 0;
 }

@@ -17,7 +17,7 @@ int main(int argc, char **argv)
 
     image.width = 0;
     image.height = 0;
-    image.pixels = 0;
+    image.pens = 0;
     error_text[0] = '\0';
 
     result = fits_load(path, &image, error_text);
