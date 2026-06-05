@@ -6,12 +6,8 @@
 
 #define FITS_CARD_SIZE 80
 #define FITS_BLOCK_SIZE 2880
-#define FITS_HISTOGRAM_BINS 32
 #define FITS_FIXED_LOW 0.0F
 #define FITS_FIXED_HIGH 4096.0F
-#define FITS_LOW_PERCENTILE_NUM 10
-#define FITS_HIGH_PERCENTILE_NUM 995
-#define FITS_PERCENTILE_DEN 1000
 
 static int starts_with(const char *card, const char *key)
 {
@@ -180,70 +176,11 @@ void fits_free(struct FitsImage *image)
 
 int fits_percentile_bounds(const struct FitsImage *image, float *low, float *high)
 {
-    long pixel_count;
-    long i;
-    float range;
-    unsigned int histogram[FITS_HISTOGRAM_BINS];
-    unsigned long low_target;
-    unsigned long high_target;
-    unsigned long seen;
-    int bin;
-
-    pixel_count = (long)image->width * (long)image->height;
-
-    if (pixel_count <= 0) {
+    if (image->width <= 0 || image->height <= 0) {
         return -1;
     }
 
-    memset(histogram, 0, sizeof(histogram));
-    range = FITS_FIXED_HIGH - FITS_FIXED_LOW;
-
-    for (i = 0; i < pixel_count; i++) {
-        float scaled;
-
-        scaled = (image->pixels[i] - FITS_FIXED_LOW) *
-                 (float)(FITS_HISTOGRAM_BINS - 1) / range;
-        bin = (int)scaled;
-        if (bin < 0) {
-            bin = 0;
-        } else if (bin >= FITS_HISTOGRAM_BINS) {
-            bin = FITS_HISTOGRAM_BINS - 1;
-        }
-        histogram[bin]++;
-    }
-
-    low_target = ((unsigned long)pixel_count * FITS_LOW_PERCENTILE_NUM) /
-                 FITS_PERCENTILE_DEN;
-    high_target = ((unsigned long)pixel_count * FITS_HIGH_PERCENTILE_NUM) /
-                  FITS_PERCENTILE_DEN;
-    if (high_target >= (unsigned long)pixel_count) {
-        high_target = (unsigned long)pixel_count - 1;
-    }
-
-    seen = 0;
     *low = FITS_FIXED_LOW;
-    for (bin = 0; bin < FITS_HISTOGRAM_BINS; bin++) {
-        seen += histogram[bin];
-        if (seen > low_target) {
-            *low = FITS_FIXED_LOW + range * (float)bin /
-                   (float)(FITS_HISTOGRAM_BINS - 1);
-            break;
-        }
-    }
-
-    seen = 0;
     *high = FITS_FIXED_HIGH;
-    for (bin = 0; bin < FITS_HISTOGRAM_BINS; bin++) {
-        seen += histogram[bin];
-        if (seen > high_target) {
-            *high = FITS_FIXED_LOW + range * (float)bin /
-                    (float)(FITS_HISTOGRAM_BINS - 1);
-            break;
-        }
-    }
-
-    if (*high <= *low) {
-        *high = *low + 1.0F;
-    }
     return 0;
 }

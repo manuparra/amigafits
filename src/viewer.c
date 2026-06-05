@@ -136,49 +136,46 @@ static void draw_image(struct RastPort *rp, const struct FitsImage *image,
 {
     int x;
     int y;
-    int left;
-    int top;
-    int scale_x;
-    int scale_y;
-    int scale;
-    int draw_width;
-    int draw_height;
+    long scaled_width;
+    long scaled_height;
+    long crop_x;
+    long crop_y;
 
-    scale_x = VIEW_WIDTH / image->width;
-    scale_y = VIEW_HEIGHT / image->height;
-    scale = scale_x < scale_y ? scale_x : scale_y;
-    if (scale < 1) {
-        scale = 1;
+    scaled_width = VIEW_WIDTH;
+    scaled_height = (long)image->height * VIEW_WIDTH / image->width;
+    if (scaled_height < VIEW_HEIGHT) {
+        scaled_height = VIEW_HEIGHT;
+        scaled_width = (long)image->width * VIEW_HEIGHT / image->height;
     }
 
-    draw_width = image->width * scale;
-    draw_height = image->height * scale;
-    if (draw_width > VIEW_WIDTH || draw_height > VIEW_HEIGHT) {
-        draw_width = VIEW_WIDTH;
-        draw_height = VIEW_HEIGHT;
-        if (image->width * VIEW_HEIGHT > image->height * VIEW_WIDTH) {
-            draw_height = (image->height * VIEW_WIDTH) / image->width;
-        } else {
-            draw_width = (image->width * VIEW_HEIGHT) / image->height;
-        }
-    }
+    crop_x = (scaled_width - VIEW_WIDTH) / 2;
+    crop_y = (scaled_height - VIEW_HEIGHT) / 2;
 
-    left = (VIEW_WIDTH - draw_width) / 2;
-    top = (VIEW_HEIGHT - draw_height) / 2;
-
-    for (y = 0; y < draw_height; y++) {
+    for (y = 0; y < VIEW_HEIGHT; y++) {
         int source_y;
 
-        source_y = (int)((long)y * image->height / draw_height);
-        for (x = 0; x < draw_width; x++) {
+        source_y = (int)(((long)y + crop_y) * image->height / scaled_height);
+        if (source_y < 0) {
+            source_y = 0;
+        } else if (source_y >= image->height) {
+            source_y = image->height - 1;
+        }
+
+        for (x = 0; x < VIEW_WIDTH; x++) {
             int source_x;
             UBYTE pen;
 
-            source_x = (int)((long)x * image->width / draw_width);
+            source_x = (int)(((long)x + crop_x) * image->width / scaled_width);
+            if (source_x < 0) {
+                source_x = 0;
+            } else if (source_x >= image->width) {
+                source_x = image->width - 1;
+            }
+
             pen = pixel_to_pen(image->pixels[(long)source_y * image->width + source_x],
                                low, high);
             SetAPen(rp, (LONG)pen);
-            WritePixel(rp, (LONG)(left + x), (LONG)(top + y));
+            WritePixel(rp, (LONG)x, (LONG)y);
         }
     }
 }

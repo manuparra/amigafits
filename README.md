@@ -11,12 +11,12 @@ The first target is the included `img.fits` astronomy image. It is a
 - Opens `img.fits` by default or a path passed as `amigafits <file>`.
 - Supports primary FITS images with `BITPIX=-32`, `NAXIS=2`, `NAXIS1`, and
   `NAXIS2`.
-- Scales images to fit the 320x200 low-resolution display area with letterbox
-  centering while preserving aspect ratio.
+- Scales images to cover the 320x200 low-resolution display area while
+  preserving aspect ratio, cropping centered overflow when needed.
 - Opens a 320x200 custom screen with 4 bitplanes and a 16-color false-color
   colormap.
 - Maps FITS pixel values to the palette with a temporary fixed `0..4096` data
-  range and a 32-bin histogram, saturating values outside the selected bounds.
+  range, saturating values outside that range.
 - Keeps the image visible until a key press, mouse button, or close event.
 
 ## Build
@@ -98,8 +98,8 @@ With the bundled `img.fits`:
 - `FSUAE_NO_LAUNCH=1 make run-fsuae` creates `build/amigafits.fs-uae` and
   copies both the binary and `img.fits` into `dist/AmigaFITS/`.
 - In Workbench 1.3 or Amiga CLI, running `amigafits` opens a graphics screen
-  and shows the 157x157 image centered. Larger supported images are scaled
-  with letterbox while preserving aspect ratio.
+  and shows the image scaled to cover the screen while preserving aspect
+  ratio. Overflow is cropped from the center.
 - Pressing any key or mouse button exits the viewer.
 
 ## Current limitations
