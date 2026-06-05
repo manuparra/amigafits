@@ -1,0 +1,17 @@
+# Copy this file or use scripts/run-fsuae.sh to generate build/amigafits.fs-uae.
+#
+# Required:
+#   kickstart_file = /path/to/kickstart-1.3.rom
+#
+# Optional, but useful for Workbench 1.3 boot:
+#   floppy_drive_0 = /path/to/Workbench1.3.adf
+#
+# The mounted directory will contain amigafits and img.fits at its root.
+
+[fs-uae]
+amiga_model = A500
+chip_memory = 512
+slow_memory = 512
+kickstart_file = /path/to/kickstart-1.3.rom
+floppy_drive_0 = /path/to/Workbench1.3.adf
+hard_drive_0 = /absolute/path/to/repo/dist/AmigaFITS
