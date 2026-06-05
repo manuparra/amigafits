@@ -21,12 +21,20 @@
 static int opened_intuition;
 static int opened_graphics;
 
+static void debug_step(const char *text)
+{
+    printf("amigafits: debug: %s\n", text);
+    fflush(stdout);
+}
+
 static int open_runtime_libraries(char *error_text)
 {
     opened_intuition = 0;
     opened_graphics = 0;
 
+    debug_step("checking intuition.library");
     if (IntuitionBase == 0) {
+        debug_step("opening intuition.library");
         IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 0L);
         opened_intuition = IntuitionBase != 0;
     }
@@ -34,8 +42,11 @@ static int open_runtime_libraries(char *error_text)
         sprintf(error_text, "cannot open intuition.library");
         return -1;
     }
+    debug_step("intuition.library ready");
 
+    debug_step("checking graphics.library");
     if (GfxBase == 0) {
+        debug_step("opening graphics.library");
         GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 0L);
         opened_graphics = GfxBase != 0;
     }
@@ -48,6 +59,7 @@ static int open_runtime_libraries(char *error_text)
         }
         return -1;
     }
+    debug_step("graphics.library ready");
 
     return 0;
 }
@@ -155,15 +167,22 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     float low;
     float high;
 
+    debug_step("viewer_show entered");
+    debug_step("calculating percentile contrast");
     if (fits_percentile_bounds(image, &low, &high) != 0) {
         sprintf(error_text, "not enough memory for contrast scale");
         return -1;
     }
+    printf("amigafits: debug: contrast low=%ld high=%ld\n", (long)low, (long)high);
+    fflush(stdout);
 
+    debug_step("opening runtime libraries");
     if (open_runtime_libraries(error_text) != 0) {
         return -1;
     }
+    debug_step("runtime libraries ready");
 
+    debug_step("preparing NewScreen");
     new_screen.LeftEdge = 0;
     new_screen.TopEdge = 0;
     new_screen.Width = VIEW_WIDTH;
@@ -178,16 +197,22 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     new_screen.Gadgets = 0;
     new_screen.CustomBitMap = 0;
 
+    debug_step("calling OpenScreen");
     screen = OpenScreen(&new_screen);
+    debug_step("OpenScreen returned");
     if (screen == 0) {
         sprintf(error_text, "cannot open 320x200x4 custom screen");
         close_runtime_libraries();
         return -1;
     }
 
+    debug_step("setting gray palette");
     set_gray_palette(&screen->ViewPort);
+    debug_step("calling ScreenToFront");
     ScreenToFront(screen);
+    debug_step("ScreenToFront returned");
 
+    debug_step("preparing NewWindow");
     new_window.LeftEdge = 0;
     new_window.TopEdge = 0;
     new_window.Width = VIEW_WIDTH;
@@ -207,7 +232,9 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     new_window.MaxHeight = VIEW_HEIGHT;
     new_window.Type = CUSTOMSCREEN;
 
+    debug_step("calling OpenWindow");
     window = OpenWindow(&new_window);
+    debug_step("OpenWindow returned");
     if (window == 0) {
         CloseScreen(screen);
         sprintf(error_text, "cannot open viewer window");
@@ -215,15 +242,21 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
         return -1;
     }
 
+    debug_step("bringing window to front");
     WindowToFront(window);
     ActivateWindow(window);
+    debug_step("clearing screen");
     SetAPen(window->RPort, 0);
     RectFill(window->RPort, 0, 0, VIEW_WIDTH - 1, VIEW_HEIGHT - 1);
+    debug_step("drawing image");
     draw_image(window->RPort, image, low, high);
+    debug_step("image drawn, waiting for input");
     wait_for_exit(window);
+    debug_step("input received, closing");
 
     CloseWindow(window);
     CloseScreen(screen);
     close_runtime_libraries();
+    debug_step("viewer_show leaving");
     return 0;
 }
