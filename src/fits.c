@@ -9,25 +9,42 @@
 #define FITS_FIXED_LOW 190.0F
 #define FITS_FIXED_HIGH 650.0F
 
-static unsigned char value_to_pen(float value)
+static void progress_tick(long index, long total)
+{
+    long step;
+
+    step = total / 20;
+    if (step < 1) {
+        step = 1;
+    }
+    if (index == 0 || (index + 1) % step == 0 || index + 1 == total) {
+        putchar('.');
+        fflush(stdout);
+    }
+}
+
+static unsigned char value_to_pen(float value, int depth)
 {
     float scaled;
     int pen;
+    int max_pen;
+
+    max_pen = (1 << depth) - 1;
 
     if (value <= FITS_FIXED_LOW) {
         return 0;
     }
     if (value >= FITS_FIXED_HIGH) {
-        return 15;
+        return (unsigned char)max_pen;
     }
 
-    scaled = (value - FITS_FIXED_LOW) * 15.0F /
+    scaled = (value - FITS_FIXED_LOW) * (float)max_pen /
              (FITS_FIXED_HIGH - FITS_FIXED_LOW);
     pen = (int)(scaled + 0.5F);
     if (pen < 0) {
         pen = 0;
-    } else if (pen > 15) {
-        pen = 15;
+    } else if (pen > max_pen) {
+        pen = max_pen;
     }
     return (unsigned char)pen;
 }
@@ -74,7 +91,7 @@ static int is_finite_bits(unsigned long bits)
     return (bits & 0x7F800000UL) != 0x7F800000UL;
 }
 
-int fits_load(const char *path, struct FitsImage *image, char *error_text)
+int fits_load(const char *path, int depth, struct FitsImage *image, char *error_text)
 {
     FILE *file;
     char card[FITS_CARD_SIZE + 1];
@@ -177,12 +194,14 @@ int fits_load(const char *path, struct FitsImage *image, char *error_text)
             return -1;
         }
         value = read_float_be(bytes);
-        pens[i] = value_to_pen(value);
+        pens[i] = value_to_pen(value, depth);
+        progress_tick(i, pixel_count);
     }
 
     fclose(file);
     image->width = width;
     image->height = height;
+    image->depth = depth;
     image->pens = pens;
     return 0;
 }
@@ -195,4 +214,5 @@ void fits_free(struct FitsImage *image)
     image->pens = 0;
     image->width = 0;
     image->height = 0;
+    image->depth = 0;
 }

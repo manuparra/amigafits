@@ -7,10 +7,11 @@
 struct FitsImage {
     int width;
     int height;
+    int depth;
     unsigned char *pens;
 };
 
-int fits_load(const char *path, struct FitsImage *image, char *error_text);
+int fits_load(const char *path, int depth, struct FitsImage *image, char *error_text);
 void fits_free(struct FitsImage *image);
 
 #endif

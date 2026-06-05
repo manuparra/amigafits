@@ -17,12 +17,14 @@
 
 #define VIEW_WIDTH 320
 #define VIEW_HEIGHT 200
-#define VIEW_DEPTH 4
 #define VIEW_PIXELS ((long)VIEW_WIDTH * (long)VIEW_HEIGHT)
+#define VIEW_BYTES_PER_ROW (VIEW_WIDTH / 8)
+#define VIEW_PLANE_SIZE ((long)VIEW_BYTES_PER_ROW * (long)VIEW_HEIGHT)
 
 static int opened_intuition;
 static int opened_graphics;
 static UBYTE chunky_buffer[VIEW_PIXELS];
+static UBYTE planar_buffer[4][VIEW_PLANE_SIZE];
 
 static void debug_step(const char *text)
 {
@@ -81,7 +83,25 @@ static void close_runtime_libraries(void)
     opened_intuition = 0;
 }
 
-static void set_colormap_palette(struct ViewPort *vp)
+static void progress_label(const char *text)
+{
+    printf("amigafits: %s [", text);
+    fflush(stdout);
+}
+
+static void progress_done(void)
+{
+    printf("]\n");
+    fflush(stdout);
+}
+
+static void progress_dot(void)
+{
+    putchar('.');
+    fflush(stdout);
+}
+
+static void set_colormap_palette(struct ViewPort *vp, int depth)
 {
     static const UBYTE colormap[16][3] = {
         {0, 0, 0},
@@ -102,33 +122,22 @@ static void set_colormap_palette(struct ViewPort *vp)
         {15, 15, 15}
     };
     int i;
+    int colors;
 
-    for (i = 0; i < 16; i++) {
+    colors = 1 << depth;
+
+    for (i = 0; i < colors; i++) {
+        int source;
+
+        source = colors == 1 ? 0 : i * 15 / (colors - 1);
         SetRGB4(vp, (LONG)i,
-                (LONG)colormap[i][0],
-                (LONG)colormap[i][1],
-                (LONG)colormap[i][2]);
+                (LONG)colormap[source][0],
+                (LONG)colormap[source][1],
+                (LONG)colormap[source][2]);
     }
 }
 
-static int bitmap_has_planes(struct BitMap *bitmap)
-{
-    int plane;
-
-    if (bitmap == 0 || bitmap->Depth < VIEW_DEPTH) {
-        return 0;
-    }
-
-    for (plane = 0; plane < VIEW_DEPTH; plane++) {
-        if (bitmap->Planes[plane] == 0) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
-                      char *error_text)
+static int render_image(const struct FitsImage *image, char *error_text)
 {
     int x;
     int y;
@@ -137,21 +146,19 @@ static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
     long scaled_height;
     long crop_x;
     long crop_y;
-    ULONG plane_size;
-    PLANEPTR planes[VIEW_DEPTH];
     int plane;
     int source_xs[VIEW_WIDTH];
     int source_ys[VIEW_HEIGHT];
+    int depth;
 
-    if (!bitmap_has_planes(bitmap)) {
-        sprintf(error_text, "viewer bitmap has no direct bitplanes");
+    depth = image->depth;
+    if (depth < 1 || depth > 4) {
+        sprintf(error_text, "invalid display depth");
         return -1;
     }
 
-    plane_size = (ULONG)bitmap->BytesPerRow * (ULONG)bitmap->Rows;
-    for (plane = 0; plane < VIEW_DEPTH; plane++) {
-        planes[plane] = bitmap->Planes[plane];
-        memset(planes[plane], 0, (size_t)plane_size);
+    for (plane = 0; plane < depth; plane++) {
+        memset(planar_buffer[plane], 0, (size_t)VIEW_PLANE_SIZE);
     }
 
     scaled_width = VIEW_WIDTH;
@@ -182,6 +189,7 @@ static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
         }
     }
 
+    progress_label("scaling image");
     for (y = 0; y < VIEW_HEIGHT; y++) {
         int source_y;
         UBYTE *chunky_row;
@@ -195,27 +203,29 @@ static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
             source_x = source_xs[x];
             chunky_row[x] = image->pens[(long)source_y * image->width + source_x];
         }
+        if ((y + 1) % 20 == 0) {
+            progress_dot();
+        }
     }
+    progress_done();
 
+    progress_label("converting to bitplanes");
     for (y = 0; y < VIEW_HEIGHT; y++) {
         UBYTE *chunky_row;
         ULONG row_offset;
 
         chunky_row = chunky_buffer + (long)y * VIEW_WIDTH;
-        row_offset = (ULONG)y * bitmap->BytesPerRow;
+        row_offset = (ULONG)y * VIEW_BYTES_PER_ROW;
 
         for (byte_x = 0; byte_x < VIEW_WIDTH / 8; byte_x++) {
-            UBYTE plane0;
-            UBYTE plane1;
-            UBYTE plane2;
-            UBYTE plane3;
+            UBYTE plane_bytes[4];
             int base;
             int bit;
 
-            plane0 = 0;
-            plane1 = 0;
-            plane2 = 0;
-            plane3 = 0;
+            plane_bytes[0] = 0;
+            plane_bytes[1] = 0;
+            plane_bytes[2] = 0;
+            plane_bytes[3] = 0;
             base = byte_x * 8;
 
             for (bit = 0; bit < 8; bit++) {
@@ -225,27 +235,54 @@ static int draw_image(struct BitMap *bitmap, const struct FitsImage *image,
                 pen = chunky_row[base + bit];
                 mask = (UBYTE)(0x80 >> bit);
 
-                if (pen & 1) {
-                    plane0 |= mask;
-                }
-                if (pen & 2) {
-                    plane1 |= mask;
-                }
-                if (pen & 4) {
-                    plane2 |= mask;
-                }
-                if (pen & 8) {
-                    plane3 |= mask;
+                for (plane = 0; plane < depth; plane++) {
+                    if (pen & (1 << plane)) {
+                        plane_bytes[plane] |= mask;
+                    }
                 }
             }
 
-            planes[0][row_offset + byte_x] = plane0;
-            planes[1][row_offset + byte_x] = plane1;
-            planes[2][row_offset + byte_x] = plane2;
-            planes[3][row_offset + byte_x] = plane3;
+            for (plane = 0; plane < depth; plane++) {
+                planar_buffer[plane][row_offset + byte_x] = plane_bytes[plane];
+            }
+        }
+        if ((y + 1) % 20 == 0) {
+            progress_dot();
+        }
+    }
+    progress_done();
+
+    return 0;
+}
+
+static int copy_render_to_bitmap(struct BitMap *bitmap, int depth, char *error_text)
+{
+    int plane;
+    int y;
+
+    if (bitmap == 0 || bitmap->Depth < depth) {
+        sprintf(error_text, "viewer bitmap has no direct bitplanes");
+        return -1;
+    }
+
+    for (plane = 0; plane < depth; plane++) {
+        if (bitmap->Planes[plane] == 0) {
+            sprintf(error_text, "viewer bitmap has no direct bitplanes");
+            return -1;
         }
     }
 
+    for (plane = 0; plane < depth; plane++) {
+        if (bitmap->BytesPerRow == VIEW_BYTES_PER_ROW) {
+            memcpy(bitmap->Planes[plane], planar_buffer[plane], (size_t)VIEW_PLANE_SIZE);
+        } else {
+            for (y = 0; y < VIEW_HEIGHT; y++) {
+                memcpy(bitmap->Planes[plane] + (ULONG)y * bitmap->BytesPerRow,
+                       planar_buffer[plane] + (ULONG)y * VIEW_BYTES_PER_ROW,
+                       VIEW_BYTES_PER_ROW);
+            }
+        }
+    }
     return 0;
 }
 
@@ -283,6 +320,9 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     struct NewWindow new_window;
 
     debug_step("viewer_show entered");
+    if (render_image(image, error_text) != 0) {
+        return -1;
+    }
 
     debug_step("opening runtime libraries");
     if (open_runtime_libraries(error_text) != 0) {
@@ -295,8 +335,8 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     new_screen.TopEdge = 0;
     new_screen.Width = VIEW_WIDTH;
     new_screen.Height = VIEW_HEIGHT;
-    new_screen.Depth = VIEW_DEPTH;
-    new_screen.DetailPen = 15;
+    new_screen.Depth = image->depth;
+    new_screen.DetailPen = (1 << image->depth) - 1;
     new_screen.BlockPen = 0;
     new_screen.ViewModes = 0;
     new_screen.Type = CUSTOMSCREEN;
@@ -315,7 +355,13 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     }
 
     debug_step("setting colormap palette");
-    set_colormap_palette(&screen->ViewPort);
+    set_colormap_palette(&screen->ViewPort, image->depth);
+    debug_step("copying image to screen bitmap");
+    if (copy_render_to_bitmap(&screen->BitMap, image->depth, error_text) != 0) {
+        CloseScreen(screen);
+        close_runtime_libraries();
+        return -1;
+    }
     debug_step("calling ScreenToFront");
     ScreenToFront(screen);
     debug_step("ScreenToFront returned");
@@ -325,7 +371,7 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     new_window.TopEdge = 0;
     new_window.Width = VIEW_WIDTH;
     new_window.Height = VIEW_HEIGHT;
-    new_window.DetailPen = 15;
+    new_window.DetailPen = (1 << image->depth) - 1;
     new_window.BlockPen = 0;
     new_window.IDCMPFlags = IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_CLOSEWINDOW;
     new_window.Flags = ACTIVATE | BACKDROP | BORDERLESS | RMBTRAP;
@@ -353,13 +399,6 @@ int viewer_show(const struct FitsImage *image, const char *title, char *error_te
     debug_step("bringing window to front");
     WindowToFront(window);
     ActivateWindow(window);
-    debug_step("drawing image");
-    if (draw_image(&screen->BitMap, image, error_text) != 0) {
-        CloseWindow(window);
-        CloseScreen(screen);
-        close_runtime_libraries();
-        return -1;
-    }
     debug_step("image drawn, waiting for input");
     wait_for_exit(window);
     debug_step("input received, closing");

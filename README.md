@@ -9,11 +9,13 @@ The first target is the included `img.fits` astronomy image. It is a
 
 - Runs on AmigaOS/Workbench 1.3.
 - Opens `img.fits` by default or a path passed as `amigafits <file>`.
+- Accepts an optional display depth from 1 to 4 bitplanes; lower depth uses
+  fewer colors and renders faster.
 - Supports primary FITS images with `BITPIX=-32`, `NAXIS=2`, `NAXIS1`, and
   `NAXIS2`.
 - Scales images to cover the 320x200 low-resolution display area while
   preserving aspect ratio, cropping centered overflow when needed.
-- Opens a 320x200 custom screen with 4 bitplanes and a 16-color false-color
+- Opens a 320x200 custom screen with the selected depth and a false-color
   colormap.
 - Maps FITS pixel values to the palette with a temporary fixed `190..650` data
   range, saturating values outside that range.
@@ -83,7 +85,15 @@ From Amiga CLI:
 ```text
 amigafits
 amigafits img.fits
+amigafits img.fits 2
 ```
+
+The optional depth argument must be between `1` and `4`. Depth `1` uses
+2 colors, depth `2` uses 4 colors, depth `3` uses 8 colors, and depth `4`
+uses 16 colors. The default is `4`.
+
+The CLI prints simple progress bars while loading, scaling, and converting the
+image so the command does not appear stalled before the graphics screen opens.
 
 From Workbench 1.3, open the mounted `AmigaFITS` drawer and run `amigafits`.
 If no icon is available in this MVP, enable `Show All Files` and double-click
