@@ -138,15 +138,45 @@ static void draw_image(struct RastPort *rp, const struct FitsImage *image,
     int y;
     int left;
     int top;
+    int scale_x;
+    int scale_y;
+    int scale;
+    int draw_width;
+    int draw_height;
 
-    left = (VIEW_WIDTH - image->width) / 2;
-    top = (VIEW_HEIGHT - image->height) / 2;
+    scale_x = VIEW_WIDTH / image->width;
+    scale_y = VIEW_HEIGHT / image->height;
+    scale = scale_x < scale_y ? scale_x : scale_y;
+    if (scale < 1) {
+        scale = 1;
+    }
 
-    for (y = 0; y < image->height; y++) {
-        for (x = 0; x < image->width; x++) {
+    draw_width = image->width * scale;
+    draw_height = image->height * scale;
+    if (draw_width > VIEW_WIDTH || draw_height > VIEW_HEIGHT) {
+        draw_width = VIEW_WIDTH;
+        draw_height = VIEW_HEIGHT;
+        if (image->width * VIEW_HEIGHT > image->height * VIEW_WIDTH) {
+            draw_height = (image->height * VIEW_WIDTH) / image->width;
+        } else {
+            draw_width = (image->width * VIEW_HEIGHT) / image->height;
+        }
+    }
+
+    left = (VIEW_WIDTH - draw_width) / 2;
+    top = (VIEW_HEIGHT - draw_height) / 2;
+
+    for (y = 0; y < draw_height; y++) {
+        int source_y;
+
+        source_y = (int)((long)y * image->height / draw_height);
+        for (x = 0; x < draw_width; x++) {
+            int source_x;
             UBYTE pen;
 
-            pen = pixel_to_pen(image->pixels[(long)y * image->width + x], low, high);
+            source_x = (int)((long)x * image->width / draw_width);
+            pen = pixel_to_pen(image->pixels[(long)source_y * image->width + source_x],
+                               low, high);
             SetAPen(rp, (LONG)pen);
             WritePixel(rp, (LONG)(left + x), (LONG)(top + y));
         }

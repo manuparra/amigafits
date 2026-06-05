@@ -7,6 +7,8 @@
 #define FITS_CARD_SIZE 80
 #define FITS_BLOCK_SIZE 2880
 #define FITS_HISTOGRAM_BINS 32
+#define FITS_FIXED_LOW 0.0F
+#define FITS_FIXED_HIGH 4096.0F
 #define FITS_LOW_PERCENTILE_NUM 10
 #define FITS_HIGH_PERCENTILE_NUM 995
 #define FITS_PERCENTILE_DEN 1000
@@ -117,9 +119,9 @@ int fits_load(const char *path, struct FitsImage *image, char *error_text)
     }
 
     if (width <= 0 || height <= 0 ||
-        width > FITS_MAX_WIDTH || height > FITS_MAX_HEIGHT) {
+        (long)width * (long)height > FITS_MAX_PIXELS) {
         fclose(file);
-        sprintf(error_text, "image dimensions %dx%d do not fit 320x200", width, height);
+        sprintf(error_text, "image dimensions %dx%d exceed MVP memory limit", width, height);
         return -1;
     }
 
@@ -180,8 +182,6 @@ int fits_percentile_bounds(const struct FitsImage *image, float *low, float *hig
 {
     long pixel_count;
     long i;
-    float min_value;
-    float max_value;
     float range;
     unsigned int histogram[FITS_HISTOGRAM_BINS];
     unsigned long low_target;
@@ -195,33 +195,13 @@ int fits_percentile_bounds(const struct FitsImage *image, float *low, float *hig
         return -1;
     }
 
-    min_value = image->pixels[0];
-    max_value = image->pixels[0];
-    for (i = 1; i < pixel_count; i++) {
-        float value;
-
-        value = image->pixels[i];
-        if (value < min_value) {
-            min_value = value;
-        }
-        if (value > max_value) {
-            max_value = value;
-        }
-    }
-
-    if (max_value <= min_value) {
-        *low = min_value;
-        *high = min_value + 1.0F;
-        return 0;
-    }
-
     memset(histogram, 0, sizeof(histogram));
-    range = max_value - min_value;
+    range = FITS_FIXED_HIGH - FITS_FIXED_LOW;
 
     for (i = 0; i < pixel_count; i++) {
         float scaled;
 
-        scaled = (image->pixels[i] - min_value) *
+        scaled = (image->pixels[i] - FITS_FIXED_LOW) *
                  (float)(FITS_HISTOGRAM_BINS - 1) / range;
         bin = (int)scaled;
         if (bin < 0) {
@@ -241,22 +221,22 @@ int fits_percentile_bounds(const struct FitsImage *image, float *low, float *hig
     }
 
     seen = 0;
-    *low = min_value;
+    *low = FITS_FIXED_LOW;
     for (bin = 0; bin < FITS_HISTOGRAM_BINS; bin++) {
         seen += histogram[bin];
         if (seen > low_target) {
-            *low = min_value + range * (float)bin /
+            *low = FITS_FIXED_LOW + range * (float)bin /
                    (float)(FITS_HISTOGRAM_BINS - 1);
             break;
         }
     }
 
     seen = 0;
-    *high = max_value;
+    *high = FITS_FIXED_HIGH;
     for (bin = 0; bin < FITS_HISTOGRAM_BINS; bin++) {
         seen += histogram[bin];
         if (seen > high_target) {
-            *high = min_value + range * (float)bin /
+            *high = FITS_FIXED_LOW + range * (float)bin /
                     (float)(FITS_HISTOGRAM_BINS - 1);
             break;
         }

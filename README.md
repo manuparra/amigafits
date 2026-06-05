@@ -3,8 +3,7 @@
 AmigaFITS is a minimum viable FITS image viewer for Amiga Workbench 1.3.
 
 The first target is the included `img.fits` astronomy image. It is a
-157x157 primary FITS image with 32-bit floating point pixels, so the viewer
-draws it 1:1 without downscaling or interpolation.
+157x157 primary FITS image with 32-bit floating point pixels.
 
 ## MVP behavior
 
@@ -12,11 +11,12 @@ draws it 1:1 without downscaling or interpolation.
 - Opens `img.fits` by default or a path passed as `amigafits <file>`.
 - Supports primary FITS images with `BITPIX=-32`, `NAXIS=2`, `NAXIS1`, and
   `NAXIS2`.
-- Rejects images larger than the 320x200 low-resolution display area.
+- Scales images to fit the 320x200 low-resolution display area with letterbox
+  centering while preserving aspect ratio.
 - Opens a 320x200 custom screen with 4 bitplanes and a 16-color false-color
   colormap.
-- Maps FITS pixel values to the palette using robust 1%-99.5% percentile
-  contrast, saturating values outside that range.
+- Maps FITS pixel values to the palette with a temporary fixed `0..4096` data
+  range and a 32-bin histogram, saturating values outside the selected bounds.
 - Keeps the image visible until a key press, mouse button, or close event.
 
 ## Build
@@ -98,11 +98,12 @@ With the bundled `img.fits`:
 - `FSUAE_NO_LAUNCH=1 make run-fsuae` creates `build/amigafits.fs-uae` and
   copies both the binary and `img.fits` into `dist/AmigaFITS/`.
 - In Workbench 1.3 or Amiga CLI, running `amigafits` opens a graphics screen
-  and shows the 157x157 image centered, without interpolation.
+  and shows the 157x157 image centered. Larger supported images are scaled
+  with letterbox while preserving aspect ratio.
 - Pressing any key or mouse button exits the viewer.
 
 ## Current limitations
 
 - Only primary 2D FITS images with `BITPIX=-32` are supported.
-- No scaling, zooming, panning, color palette selection, or histogram UI yet.
-- Images larger than 320x200 are rejected instead of rescaled.
+- No zooming, panning, color palette selection, or histogram UI yet.
+- Contrast currently assumes a fixed `0..4096` input range.
